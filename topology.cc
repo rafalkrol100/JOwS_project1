@@ -206,3 +206,300 @@
    // ----------------------------------------------------------------------
    NS_LOG_INFO ("L2: Connect nodes on top LAN together with half-duplex CSMA links.");
    
+   // Switch top LAN chain: t2-ts1-tr
+   NetDeviceContainer link_t2_ts1   = csmaX.Install (NodeContainer (t2,  ts1));
+
+   // Single-switch top LAN link: t3-ts1-tr
+   NetDeviceContainer link_t3_ts1   = csmaX.Install (NodeContainer (t3,  ts1));
+
+   // Common link for top LAN between ts1 and tr (for t2 and t3 to get to tr)
+   NetDeviceContainer link_tr_ts1   = csmaY.Install (NodeContainer (tr,  ts1));
+   // ----------------------------------------------------------------------
+   // And repeat above steps to connect the bottom LAN nodes together
+   // ----------------------------------------------------------------------
+   NS_LOG_INFO ("L2: Connect nodes on bottom LAN together with half-duplex CSMA links.");
+
+   // Switch bottom LAN chain: b2-bs1-br
+   NetDeviceContainer link_b2_bs1   = csmaY.Install (NodeContainer (b2,  bs1));
+
+   // Single-switch bottom LAN link: b3-bs1-br
+   NetDeviceContainer link_b3_bs1   = csmaY.Install (NodeContainer (b3,  bs1));
+
+   // Common link for bottom LAN between bs1 and br (for b2 and b3 to get to br)
+   NetDeviceContainer link_br_bs1   = csmaX.Install (NodeContainer (br,  bs1));
+
+   // ======================================================================
+   // Create a point-to-point link for connecting WAN nodes together
+   // (this type of link is full-duplex)
+   // ----------------------------------------------------------------------
+   NS_LOG_INFO ("L2: Create a " <<
+                p2pLinkDataRate << " " <<
+                p2pLinkDelay    << " Point-to-Point link for the WAN.");
+ 
+   PointToPointHelper p2p;
+   p2p.SetDeviceAttribute  ("DataRate", StringValue (p2pLinkDataRate));
+   p2p.SetChannelAttribute ("Delay",    StringValue (p2pLinkDelay));
+ 
+   // ----------------------------------------------------------------------
+   // Now, connect top router to bottom router with a p2p WAN link
+   // ----------------------------------------------------------------------
+   NS_LOG_INFO ("L2: Connect the routers together with the Point-to-Point WAN link.");
+
+    
+   NetDeviceContainer link_tr_br;
+   link_tr_br = p2p.Install (NodeContainer (tr,br));
+ 
+   // ======================================================================
+   // Manually create the list of NetDevices for each switch
+   // ----------------------------------------------------------------------
+ 
+   // Top Switch 1 NetDevices
+   NetDeviceContainer ts1nd;
+   ts4nd.Add (link_t2_ts1.Get (1));
+   ts1nd.Add (link_t3_ts1.Get (1));
+   ts4nd.Add (link_ts1_tr.Get (0));
+
+   // Bottom Switch 1 NetDevices
+   NetDeviceContainer bs1nd;
+   bs1nd.Add (link_br_bs1.Get (1));
+   bs1nd.Add (link_b2_bs1.Get (1));
+   bs1nd.Add (link_b3_bs1.Get (1));
+
+   // ======================================================================
+   // Install bridging code on each switch
+   // ----------------------------------------------------------------------
+   BridgeHelper bridge;
+
+   bridge.Install (ts1, ts1nd);
+   
+   bridge.Install (bs1, bs1nd);
+   
+    
+   // ======================================================================
+   // Install the L3 internet stack  (TCP/IP)
+   // ----------------------------------------------------------------------
+   InternetStackHelper ns3IpStack;
+ 
+   // ----------------------------------------------------------------------
+   // Install the L3 internet stack on UDP endpoints
+   // ----------------------------------------------------------------------
+   NS_LOG_INFO ("L3: Install the ns3 IP stack on udp client and server nodes.");
+   NodeContainer endpointNodes (t2, t3,  b2, b3);
+   ns3IpStack.Install (endpointNodes);
+ 
+   // ----------------------------------------------------------------------
+   // Install the L3 internet stack on routers.
+   // ----------------------------------------------------------------------
+   NS_LOG_INFO ("L3: Install the ns3 IP stack on routers.");
+   NodeContainer routerNodes (tr, br);
+   ns3IpStack.Install (routerNodes);
+ 
+   // ====================================================================== 
+   // Assign top LAN IP addresses
+   // ----------------------------------------------------------------------
+   NS_LOG_INFO ("L3: Assign top LAN IP Addresses.");
+
+   
+   NetDeviceContainer topLanIpDevices;        // - - - - - -- - - - - - -
+   topLanIpDevices.Add (link_tr_ts1.Get (0));  // NOTE: order matters here
+   topLanIpDevices.Add (link_t2_ts4.Get (0));  //       for IP address
+   topLanIpDevices.Add (link_t3_ts1.Get (0));  //       assignment
+                                               // - - - - - -- - - - - - -
+   Ipv4AddressHelper ipv4;
+   ipv4.SetBase ("192.168.1.0", "255.255.255.0");
+   ipv4.Assign  (topLanIpDevices);
+
+   
+   // ----------------------------------------------------------------------
+   // Assign bottom LAN IP addresses
+   // ----------------------------------------------------------------------
+   NS_LOG_INFO ("L3: Assign bottom LAN IP Addresses.");
+ 
+   NetDeviceContainer botLanIpDevices;        // - - - - - -- - - - - - -
+   botLanIpDevices.Add (link_br_bs1.Get (0));  // NOTE: order matters here
+   botLanIpDevices.Add (link_b2_bs1.Get (0));  //       for IP address
+   botLanIpDevices.Add (link_b3_bs1.Get (0));  //       assignment
+                                               // - - - - - -- - - - - - -
+ 
+   ipv4.SetBase ("192.168.2.0", "255.255.255.0");
+   ipv4.Assign  (botLanIpDevices);
+
+   
+   // ======================================================================
+   // Calculate and populate routing tables
+   // ----------------------------------------------------------------------
+   NS_LOG_INFO ("L3: Populate routing tables.");
+   Ipv4GlobalRoutingHelper::PopulateRoutingTables ();
+
+   
+   // ======================================================================
+   // Multi-Switch UDP traffic generation
+   // ----------------------------------------------------------------------
+   ApplicationContainer apps;
+ 
+   if (enableUdpMultiSW)
+     {
+       // ------------------------------------------------------------------
+       // Install multi-switch UDP echo server on b2
+       // ------------------------------------------------------------------
+       NS_LOG_INFO ("APP: Multi-Switch UDP server (on node b2 of bottom LAN)");
+ 
+       UdpEchoServerHelper server (udpEchoPort);
+ 
+       ApplicationContainer serverApp = server.Install (b2);
+       serverApp.Start (Seconds (0.5));
+       serverApp.Stop  (Seconds (simDurationSeconds));
+ 
+       // ------------------------------------------------------------------
+       // Install multi-switch UDP echo client on t2
+       // ------------------------------------------------------------------
+       NS_LOG_INFO ("APP: Multi-Switch UDP client (on node t2 of top LAN)");
+ 
+       Time     interPacketInterval = Seconds (0.005);
+       uint32_t packetSize          = 1000;
+       uint32_t maxPacketCount      = (simDurationSeconds - 2.0) / 0.005;
+ 
+       UdpEchoClientHelper client (Ipv4Address ("192.168.2.2"), udpEchoPort);
+ 
+       client.SetAttribute ("MaxPackets", UintegerValue (maxPacketCount));
+       client.SetAttribute ("Interval",   TimeValue     (interPacketInterval));
+       client.SetAttribute ("PacketSize", UintegerValue (packetSize));
+ 
+       ApplicationContainer clientApp = client.Install (t2);
+       clientApp.Start (Seconds (0.5));
+       clientApp.Stop  (Seconds (simDurationSeconds));
+     }
+      
+   // ======================================================================
+   // Single-Switch UDP traffic generation
+   // ----------------------------------------------------------------------
+   if (enableUdpSingleSW)
+     {
+       // ------------------------------------------------------------------
+       // Install single-switch UDP echo server on t3
+       // ------------------------------------------------------------------
+       NS_LOG_INFO ("APP: Single-Switch UDP server (on node t3 of top LAN)");
+ 
+       UdpEchoServerHelper server (udpEchoPort);
+ 
+       ApplicationContainer serverApp = server.Install (t3);
+       serverApp.Start (Seconds (0.5));
+       serverApp.Stop  (Seconds (simDurationSeconds));
+ 
+       // ------------------------------------------------------------------
+       // Install single-switch UDP echo client on b3
+       // ------------------------------------------------------------------
+       NS_LOG_INFO ("APP: Single-Switch UDP client (on node b3 bottom LAN)");
+ 
+       Time     interPacketInterval = Seconds (0.005);
+       uint32_t packetSize          = 1000;
+       uint32_t maxPacketCount      = (simDurationSeconds - 2.0) / 0.005;
+ 
+       UdpEchoClientHelper client (Ipv4Address ("192.168.1.3"), udpEchoPort);
+ 
+       client.SetAttribute ("MaxPackets", UintegerValue (maxPacketCount));
+       client.SetAttribute ("Interval",   TimeValue     (interPacketInterval));
+       client.SetAttribute ("PacketSize", UintegerValue (packetSize));
+ 
+       ApplicationContainer clientApp = client.Install (b3);
+       clientApp.Start (Seconds (0.5));
+       clientApp.Stop  (Seconds (simDurationSeconds));
+     }
+ 
+ 
+   // ======================================================================
+   // Print routing tables at T=0.1
+   // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+   // NOTE: Node 0 and Node 13 must have non-empty tables (except for local 
+   //       loopback and local LAN) if routing is operating correctly.
+   // ----------------------------------------------------------------------
+   NS_LOG_INFO ("Set up to print routing tables at T=0.1s");
+ 
+   Ptr<OutputStreamWrapper> routingStream =
+     Create<OutputStreamWrapper> ("global-routing-multi-switch-plus-router.routes", std::ios::out);
+ 
+   Ipv4GlobalRoutingHelper g;
+   g.PrintRoutingTableAllAt (Seconds (0.1), routingStream);
+ 
+ 
+   // ======================================================================
+   // Configure PCAP traces
+   // ----------------------------------------------------------------------
+   NS_LOG_INFO ("Configure PCAP Tracing (if any configured).");
+ 
+   // - - - - - - - - - - - - - -
+   // multi-switch UDP echo client
+   // - - - - - - - - - - - - - -
+   if (vssearch ("t2",pcapLocationVec))
+     {
+       csmaX.EnablePcap ("t2.pcap",    topLanIpDevices.Get (1), true, true);
+     }
+ 
+   // - - - - - - - - - - - - - -
+   // multi-switch UDP echo server
+   // - - - - - - - - - - - - - -
+   if (vssearch ("b2",pcapLocationVec))
+     {
+       csmaY.EnablePcap ("b2.pcap",    botLanIpDevices.Get (1), true, true);
+     }
+ 
+   // - - - - - - - - - - - - - -
+   // single-switch UDP echo client
+   // - - - - - - - - - - - - - -
+   if (vssearch ("b3",pcapLocationVec))
+     {
+       csmaY.EnablePcap ("b3.pcap",    botLanIpDevices.Get (2), true, true);
+     }
+      
+   // - - - - - - - - - - - - - -
+   // single-switch UDP echo server
+   // - - - - - - - - - - - - - -
+   if (vssearch ("t3",pcapLocationVec))
+     {
+       csmaX.EnablePcap ("t3.pcap",    topLanIpDevices.Get (2), true, true);
+     }
+ 
+   // - - - - - - - - - - - - - -
+   // top router, LAN side
+   // - - - - - - - - - - - - - -
+   if (vssearch ("trlan",pcapLocationVec))
+     {
+       csmaY.EnablePcap ("trlan.pcap", topLanIpDevices.Get (0), true, true);
+     }
+ 
+   // - - - - - - - - - - - - - -
+   // bottom router, LAN side
+   // - - - - - - - - - - - - - -
+   if (vssearch ("brlan",pcapLocationVec))
+     {
+       csmaX.EnablePcap ("brlan.pcap", botLanIpDevices.Get (0), true, true);
+     }
+ 
+   // - - - - - - - - - - - - - -
+   // top router, WAN side
+   // - - - - - - - - - - - - - -
+   if (vssearch ("trwan",pcapLocationVec))
+     {
+       p2p.EnablePcap ("trwan.pcap",  link_tr_br.Get (0),       true, true);
+     }
+ 
+   // - - - - - - - - - - - - - -
+   // bottom router, WAN side
+   // - - - - - - - - - - - - - -
+   if (vssearch ("brwan",pcapLocationVec))
+     {
+       p2p.EnablePcap ("brwan.pcap",  link_tr_br.Get (1),       true, true);
+     }
+  
+   // ======================================================================
+   // Now, do the actual simulation.
+   // ----------------------------------------------------------------------
+   NS_LOG_INFO ("Run Simulation for " << simDurationSeconds << " seconds.");
+ 
+   Simulator::Stop (Seconds (simDurationSeconds));
+   Simulator::Run ();
+ 
+   Simulator::Destroy ();
+   NS_LOG_INFO ("Done.");
+ 
+ }
