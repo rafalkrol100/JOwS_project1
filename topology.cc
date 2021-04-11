@@ -255,9 +255,9 @@
  
    // Top Switch 1 NetDevices
    NetDeviceContainer ts1nd;
-   ts4nd.Add (link_t2_ts1.Get (1));
+   ts1nd.Add (link_t2_ts1.Get (1));
    ts1nd.Add (link_t3_ts1.Get (1));
-   ts4nd.Add (link_ts1_tr.Get (0));
+   ts1nd.Add (link_tr_ts1.Get (0));
 
    // Bottom Switch 1 NetDevices
    NetDeviceContainer bs1nd;
@@ -302,7 +302,7 @@
    
    NetDeviceContainer topLanIpDevices;        // - - - - - -- - - - - - -
    topLanIpDevices.Add (link_tr_ts1.Get (0));  // NOTE: order matters here
-   topLanIpDevices.Add (link_t2_ts4.Get (0));  //       for IP address
+   topLanIpDevices.Add (link_t2_ts1.Get (0));  //       for IP address
    topLanIpDevices.Add (link_t3_ts1.Get (0));  //       assignment
                                                // - - - - - -- - - - - - -
    Ipv4AddressHelper ipv4;
