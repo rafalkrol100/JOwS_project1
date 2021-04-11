@@ -592,7 +592,7 @@
    NodeContainer routerNodes (tr, br);
    ns3IpStack.Install (routerNodes);
  
-   // ======================================================================
+   // ====================================================================== 
    // Assign top LAN IP addresses
    // ----------------------------------------------------------------------
    NS_LOG_INFO ("L3: Assign top LAN IP Addresses.");
