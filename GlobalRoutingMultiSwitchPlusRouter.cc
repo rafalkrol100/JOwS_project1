@@ -23,7 +23,7 @@
    // ----------------------------------------------------------------------
    bool        verbose              = true;
  
-   int         simDurationSeconds   = 60;
+   int         simDurationSeconds   = 3;
  
    bool        enableUdpMultiSW     = true;
    bool        enableUdpSingleSW    = true;
@@ -257,7 +257,7 @@
    NetDeviceContainer ts1nd;
    ts1nd.Add (link_t2_ts1.Get (1));
    ts1nd.Add (link_t3_ts1.Get (1));
-   ts1nd.Add (link_tr_ts1.Get (0));
+   ts1nd.Add (link_tr_ts1.Get (1));
 
    // Bottom Switch 1 NetDevices
    NetDeviceContainer bs1nd;
@@ -324,6 +324,14 @@
    ipv4.SetBase ("192.168.2.0", "255.255.255.0");
    ipv4.Assign  (botLanIpDevices);
 
+   // ----------------------------------------------------------------------
+   // Assign WAN IP addresses
+   // ----------------------------------------------------------------------
+   NS_LOG_INFO ("L3: Assign WAN IP Addresses.");
+ 
+   ipv4.SetBase ("76.1.1.0", "255.255.255.0");
+   ipv4.Assign  (link_tr_br);
+
    
    // ======================================================================
    // Calculate and populate routing tables
@@ -332,7 +340,8 @@
    
    Ipv4GlobalRoutingHelper::PopulateRoutingTables ();
 
-   
+      NS_LOG_INFO ("check");
+
    // ======================================================================
    // Multi-Switch UDP traffic generation
    // ----------------------------------------------------------------------
