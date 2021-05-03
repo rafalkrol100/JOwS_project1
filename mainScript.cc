@@ -52,9 +52,11 @@ static void GenerateTraffic (Ptr<Socket> socket, Ptr<ExponentialRandomVariable> 
    std::string p2pLinkDataRate      = "5Mbps";
    std::string p2pLinkDelay         = "50ms";
 
-   bool        enableUdpMultiSW     = true;
-   bool        enableUdpSingleSW    = true;
-   uint16_t    udpEchoPort          = 9; 
+//   bool        enableUdpMultiSW     = true;
+//   bool        enableUdpSingleSW    = true;
+//   uint16_t    udpEchoPort          = 9; 
+   double      lambda               = 300;
+   double      mu                   = 330;
 
    // ----------------------------------------------------------------------
    // Create command line options and get them
@@ -345,82 +347,26 @@ static void GenerateTraffic (Ptr<Socket> socket, Ptr<ExponentialRandomVariable> 
 
       NS_LOG_INFO ("check");
     
+  //application content
     
-   // ======================================================================
-   // Multi-Switch UDP traffic generation
-   // ----------------------------------------------------------------------
-   ApplicationContainer apps;
- 
-   if (enableUdpMultiSW)
-     {
-      
-       // ------------------------------------------------------------------
-       // Install multi-switch UDP echo server on b2
-       // ------------------------------------------------------------------
-       NS_LOG_INFO ("APP: Multi-Switch UDP server (on node b2 of bottom LAN)");
- 
-       UdpEchoServerHelper server (udpEchoPort);
- 
-       ApplicationContainer serverApp = server.Install (b2);
-       serverApp.Start (Seconds (0.5));
-       serverApp.Stop  (Seconds (simDurationSeconds));
- 
-       // ------------------------------------------------------------------
-       // Install multi-switch UDP echo client on t2
-       // ------------------------------------------------------------------
-       NS_LOG_INFO ("APP: Multi-Switch UDP client (on node t2 of top LAN)");
- 
-       Time     interPacketInterval = Seconds (0.005);
-       uint32_t packetSize          = 1000;
-       uint32_t maxPacketCount      = (simDurationSeconds - 2.0) / 0.005;
- 
-       UdpEchoClientHelper client (Ipv4Address ("192.168.2.2"), udpEchoPort);
- 
-       client.SetAttribute ("MaxPackets", UintegerValue (maxPacketCount));
-       client.SetAttribute ("Interval",   TimeValue     (interPacketInterval));
-       client.SetAttribute ("PacketSize", UintegerValue (packetSize));
- 
-       ApplicationContainer clientApp = client.Install (t2);
-       clientApp.Start (Seconds (0.5));
-       clientApp.Stop  (Seconds (simDurationSeconds));
-     }
-      
-   // ======================================================================
-   // Single-Switch UDP traffic generation
-   // ----------------------------------------------------------------------
-  
-   if (enableUdpSingleSW)
-     {
-       // ------------------------------------------------------------------
-       // Install single-switch UDP echo server on t3
-       // ------------------------------------------------------------------
-       NS_LOG_INFO ("APP: Single-Switch UDP server (on node t3 of top LAN)");
- 
-       UdpEchoServerHelper server (udpEchoPort);
- 
-       ApplicationContainer serverApp = server.Install (t3);
-       serverApp.Start (Seconds (0.5));
-       serverApp.Stop  (Seconds (simDurationSeconds));
- 
-       // ------------------------------------------------------------------
-       // Install single-switch UDP echo client on b3
-       // ------------------------------------------------------------------
-       NS_LOG_INFO ("APP: Single-Switch UDP client (on node b3 bottom LAN)");
- 
-       Time     interPacketInterval = Seconds (0.005);
-       uint32_t packetSize          = 1000;
-       uint32_t maxPacketCount      = (simDurationSeconds - 2.0) / 0.005;
- 
-       UdpEchoClientHelper client (Ipv4Address ("192.168.1.3"), udpEchoPort);
- 
-       client.SetAttribute ("MaxPackets", UintegerValue (maxPacketCount));
-       client.SetAttribute ("Interval",   TimeValue     (interPacketInterval));
-       client.SetAttribute ("PacketSize", UintegerValue (packetSize));
- 
-       ApplicationContainer clientApp = client.Install (b3);
-       clientApp.Start (Seconds (0.5));
-       clientApp.Stop  (Seconds (simDurationSeconds));
-     }
+    TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
+    Ptr<Socket> recvSink = Socket::CreateSocket (endpointNodes.Get(0), tid);
+    InetSocketAddress local = InetSocketAddress (interfacestop.GetAddress (1), 80);
+    recvSink->Bind (local);
+
+    Ptr<Socket> source = Socket::CreateSocket (endpointNodes.Get(1), tid);
+    InetSocketAddress remote = InetSocketAddress (interfacestop.GetAddress (1), 80);
+    source->Connect (remote);
+
+    double mean = 1.0/lambda;
+    Ptr<ExponentialRandomVariable> randomTime = CreateObject<ExponentialRandomVariable> ();
+    randomTime->SetAttribute ("Mean", DoubleValue (mean));
+
+    mean = (1000000.0/(8*mu)-30); // (1 000 000 [b/s])/(8 [b/B] * packet service rate [1/s]) - 30 [B (header bytes)]
+    Ptr<ExponentialRandomVariable> randomSize = CreateObject<ExponentialRandomVariable> ();
+    randomSize->SetAttribute ("Mean", DoubleValue (mean));
+
+    Simulator::ScheduleWithContext (source->GetNode ()->GetId (), Seconds (1.0), &GenerateTraffic, source, randomSize, randomTime);
 
 
  
